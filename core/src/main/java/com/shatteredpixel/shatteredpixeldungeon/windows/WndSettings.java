@@ -23,10 +23,9 @@ package com.shatteredpixel.shatteredpixeldungeon.windows;
 
 import com.shatteredpixel.shatteredpixeldungeon.Assets;
 import com.shatteredpixel.shatteredpixeldungeon.Chrome;
-import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
-import com.shatteredpixel.shatteredpixeldungeon.ModMenu;
 import com.shatteredpixel.shatteredpixeldungeon.SPDSettings;
 import com.shatteredpixel.shatteredpixeldungeon.ShatteredPixelDungeon;
+import com.shatteredpixel.shatteredpixeldungeon.messages.ArabicUtils;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Languages;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
@@ -46,8 +45,10 @@ import com.watabou.input.ControllerHandler;
 import com.watabou.noosa.ColorBlock;
 import com.watabou.noosa.Game;
 import com.watabou.noosa.Image;
+import com.watabou.noosa.NoosaScript;
 import com.watabou.noosa.audio.Sample;
 import com.watabou.noosa.ui.Component;
+import com.watabou.utils.Callback;
 import com.watabou.utils.DeviceCompat;
 import com.watabou.utils.Random;
 
@@ -66,7 +67,6 @@ public class WndSettings extends WndTabbed {
 
 	private DisplayTab  display;
 	private UITab       ui;
-	private ModTab      mod;
 	private InputTab    input;
 	private DataTab     data;
 	private AudioTab    audio;
@@ -131,35 +131,19 @@ public class WndSettings extends WndTabbed {
 			});
 		}
 
-		if (Dungeon.hero != null) {
-			mod = new ModTab();
-			mod.setSize(width, 0);
-			height = Math.max(height, mod.height());
-			add( mod );
+		data = new DataTab();
+		data.setSize(width, 0);
+		height = Math.max(height, data.height());
+		add( data );
 
-			add( new IconTab(Icons.get(Icons.CHALLENGE_COLOR)){
-				@Override
-				protected void select(boolean value) {
-					super.select(value);
-					mod.visible = mod.active = value;
-					if (value) last_index = 3;
-				}
-			});
-		} else {
-			data = new DataTab();
-			data.setSize(width, 0);
-			height = Math.max(height, data.height());
-			add( data );
-
-			add( new IconTab(Icons.get(Icons.DATA)){
-				@Override
-				protected void select(boolean value) {
-					super.select(value);
-					data.visible = data.active = value;
-					if (value) last_index = 3;
-				}
-			});
-		}
+		add( new IconTab(Icons.get(Icons.DATA)){
+			@Override
+			protected void select(boolean value) {
+				super.select(value);
+				data.visible = data.active = value;
+				if (value) last_index = 3;
+			}
+		});
 
 		audio = new AudioTab();
 		audio.setSize(width, 0);
@@ -292,10 +276,13 @@ public class WndSettings extends WndTabbed {
 			add(sep2);
 
 			optBrightness = new OptionSlider(Messages.get(this, "brightness"),
-					Messages.get(this, "dark"), Messages.get(this, "bright"), -1, 1) {
+					Messages.get(this, "dark"), Messages.get(this, "bright"), -2, 2) {
 				@Override
 				protected void onChange() {
 					SPDSettings.brightness(getSelectedValue());
+					// 0.8/0.91/1/1.11/1.25
+					NoosaScript.brightness(1f/(1f-getSelectedValue()/10f));
+					GameScene.updateFog();
 				}
 			};
 			optBrightness.setSelectedValue(SPDSettings.brightness());
@@ -801,6 +788,8 @@ public class WndSettings extends WndTabbed {
 		CheckBox chkUpdates;
 		CheckBox chkBetas;
 		CheckBox chkWifi;
+		ColorBlock sep2;
+		RedButton btnBackupRestore;
 
 		@Override
 		protected void createChildren() {
@@ -859,6 +848,25 @@ public class WndSettings extends WndTabbed {
 				chkWifi.checked(SPDSettings.WiFi());
 				add(chkWifi);
 			}
+
+			//only shown on Android (iOS has sync, Desktop can access files)
+			if (DeviceCompat.isAndroid()) {
+
+				sep2 = new ColorBlock(1, 1, 0xFF000000);
+				add(sep2);
+
+				btnBackupRestore = new RedButton( Messages.get(this, "backup") ){
+					@Override
+					protected void onClick() {
+						if (ShatteredPixelDungeon.scene() instanceof GameScene) {
+							GameScene.show(new WndError(Messages.get(WndSettings.DataTab.this, "backup_main_menu")));
+						} else {
+							ShatteredPixelDungeon.scene().addToFront(new WndAndroidLocalBackupRestore());
+						}
+					}
+				};
+				add(btnBackupRestore);
+			}
 		}
 
 		@Override
@@ -889,6 +897,17 @@ public class WndSettings extends WndTabbed {
 			if (chkWifi != null){
 				chkWifi.setRect(0, pos + GAP, width, BTN_HEIGHT);
 				pos = chkWifi.bottom();
+			}
+
+			if (sep2 != null){
+				sep2.size(width, 1);
+				sep2.y = pos + GAP;
+				pos = sep2.y + 1;
+			}
+
+			if (btnBackupRestore != null){
+				btnBackupRestore.setRect(0, pos + GAP, width, BTN_HEIGHT);
+				pos = btnBackupRestore.bottom();
 			}
 
 			height = pos;
@@ -1114,7 +1133,14 @@ public class WndSettings extends WndTabbed {
 							}
 							@Override
 							public void afterCreate() {
-								//do nothing
+								if (langs.get(langIndex) == Languages.ARABIC){
+									ShatteredPixelDungeon.runOnRenderThread(new Callback() {
+										@Override
+										public void call() {
+											ShatteredPixelDungeon.scene().addToFront(new WndArabicWarn());
+										}
+									});
+								}
 							}
 						});
 					}
@@ -1211,6 +1237,13 @@ public class WndSettings extends WndTabbed {
 
 						RenderedTextBlock text = PixelScene.renderTextBlock(7);
 						text.maxWidth(w);
+						if (currLang == Languages.ARABIC){
+							for (int i = 0; i < entries.length; i++){
+								entries[i] = ArabicUtils.convertTextBlockForDisplay(entries[i]);
+							}
+							text.rightToLeft = true;
+						}
+
 						text.tokens(entries);
 
 						text.setPos(0, title.bottom() + 4);
@@ -1278,275 +1311,17 @@ public class WndSettings extends WndTabbed {
 		}
 	}
 
-	private static class ModTab extends Component {
+	public static class WndArabicWarn extends WndTitledMessage{
 
-		RenderedTextBlock title;
+		public WndArabicWarn() {
+			super(Icons.INFO.get(), "دعم تجريبي للغة العربية!", "تدعم لعبة Shattered Pixel Dungeon الآن اللغة العربية! نظرًا لأن اللغة العربية لغة تُكتب من اليمين إلى اليسار، فقد كانت هناك حاجة إلى بعض وظائف عرض النصوص الجديدة لجعلها تعمل. يجب أن يعمل كل شيء في الغالب، ولكن يُرجى إبلاغي إذا واجهت أي مشاكل! يمكنك تغيير اللغة مرة أخرى إلى الإنجليزية في قائمة الإعدادات");
 
-		// Row 1 (3 items):
-		CheckBox chkHP;
-		CheckBox chkSTR;
-		RedButton btnSetSTR;
+			RenderedTextBlock text = PixelScene.renderTextBlock( 6 );
+			text.text("_Experimental Arabic Support!_\n\nShattered Pixel Dungeon now supports Arabic! Because Arabic is a right-to-left language, some new text-rendering functionality was needed. Things should work for the most part, but please let me know if you encounter issues! You can switch the language back to English in the settings menu.", width);
+			text.setPos( 0, height + 2*GAP );
+			add( text );
 
-		// Row 2 (2 items):
-		CheckBox chkInvulnerable;
-		CheckBox chkStealth;
-
-		// Row 3 (2 items):
-		CheckBox chkAutoIdentify;
-		CheckBox chkShop;
-
-		// Row 4 (2 items):
-		CheckBox chkInfTalent;
-		CheckBox chkNoLock;
-
-		// Row 5 (2 items):
-		CheckBox chkInfWand;
-		CheckBox chkInfItem;
-
-		// Row 6 (3 items):
-		RedButton btnX2Gold;
-		RedButton btnX2Energy;
-		RedButton btnX2Exp;
-
-		// Row 7 (2 items):
-		RedButton btnGetItem;
-		RedButton btnGoToLevel;
-
-		@Override
-		protected void createChildren() {
-			title = PixelScene.renderTextBlock("Mod menu", 9);
-			title.hardlight(TITLE_COLOR);
-			add(title);
-
-			// Row 1
-			chkHP = new CheckBox("HP") {
-				@Override
-				protected void onClick() {
-					super.onClick();
-					ModMenu.toggleHP(checked());
-				}
-			};
-			chkHP.checked(ModMenu.hp);
-			add(chkHP);
-
-			chkSTR = new CheckBox("STR") {
-				@Override
-				protected void onClick() {
-					super.onClick();
-					ModMenu.toggleSTR(checked());
-				}
-			};
-			chkSTR.checked(ModMenu.str);
-			add(chkSTR);
-
-			btnSetSTR = new RedButton("Set STR", 7) {
-				@Override
-				protected void onClick() {
-					GameScene.show(new WndTextInput("Set STR", "Enter strength value:", "999", 3, false, "Set", "Cancel") {
-						@Override
-						public void onSelect(boolean positive, String text) {
-							if (positive && text != null && !text.trim().isEmpty()) {
-								try {
-									int val = Integer.parseInt(text.trim());
-									ModMenu.setStr(val);
-								} catch (Exception ignored) {}
-							}
-						}
-					});
-				}
-			};
-			add(btnSetSTR);
-
-			// Row 2
-			chkInvulnerable = new CheckBox("Invulnerable") {
-				@Override
-				protected void onClick() {
-					super.onClick();
-					ModMenu.invulnerable = checked();
-				}
-			};
-			chkInvulnerable.checked(ModMenu.invulnerable);
-			add(chkInvulnerable);
-
-			chkStealth = new CheckBox("Stealth") {
-				@Override
-				protected void onClick() {
-					super.onClick();
-					ModMenu.toggleStealth(checked());
-				}
-			};
-			chkStealth.checked(ModMenu.stealth);
-			add(chkStealth);
-
-			// Row 3
-			chkAutoIdentify = new CheckBox("Auto Identify") {
-				@Override
-				protected void onClick() {
-					super.onClick();
-					ModMenu.toggleAutoIdentify(checked());
-				}
-			};
-			chkAutoIdentify.checked(ModMenu.autoIdentify);
-			add(chkAutoIdentify);
-
-			chkShop = new CheckBox("Shop") {
-				@Override
-				protected void onClick() {
-					super.onClick();
-					ModMenu.shop = checked();
-				}
-			};
-			chkShop.checked(ModMenu.shop);
-			add(chkShop);
-
-			// Row 4
-			chkInfTalent = new CheckBox("∞ Talent") {
-				@Override
-				protected void onClick() {
-					super.onClick();
-					ModMenu.infTalent = checked();
-				}
-			};
-			chkInfTalent.checked(ModMenu.infTalent);
-			add(chkInfTalent);
-
-			chkNoLock = new CheckBox("No Lock") {
-				@Override
-				protected void onClick() {
-					super.onClick();
-					ModMenu.noLock = checked();
-				}
-			};
-			chkNoLock.checked(ModMenu.noLock);
-			add(chkNoLock);
-
-			// Row 5
-			chkInfWand = new CheckBox("∞ Wand use") {
-				@Override
-				protected void onClick() {
-					super.onClick();
-					ModMenu.infWand = checked();
-				}
-			};
-			chkInfWand.checked(ModMenu.infWand);
-			add(chkInfWand);
-
-			chkInfItem = new CheckBox("∞ Item") {
-				@Override
-				protected void onClick() {
-					super.onClick();
-					ModMenu.infItem = checked();
-				}
-			};
-			chkInfItem.checked(ModMenu.infItem);
-			add(chkInfItem);
-
-			// Row 6
-			btnX2Gold = new RedButton("X2 Gold", 7) {
-				@Override
-				protected void onClick() {
-					ModMenu.doubleGold();
-				}
-			};
-			add(btnX2Gold);
-
-			btnX2Energy = new RedButton("X2 Energy", 7) {
-				@Override
-				protected void onClick() {
-					ModMenu.doubleEnergy();
-				}
-			};
-			add(btnX2Energy);
-
-			btnX2Exp = new RedButton("X2 EXP", 7) {
-				@Override
-				protected void onClick() {
-					ModMenu.doubleExp();
-				}
-			};
-			add(btnX2Exp);
-
-			// Row 7
-			btnGetItem = new RedButton("Get item", 8) {
-				@Override
-				protected void onClick() {
-					GameScene.show(new WndGetItem());
-				}
-			};
-			add(btnGetItem);
-
-			btnGoToLevel = new RedButton("Go to level", 8) {
-				@Override
-				protected void onClick() {
-					GameScene.show(new WndTextInput("Go to level", "Enter depth (1-26):", String.valueOf(Dungeon.depth > 0 ? Dungeon.depth : 1), 2, false, "Go", "Cancel") {
-						@Override
-						public void onSelect(boolean positive, String text) {
-							if (positive && text != null && !text.trim().isEmpty()) {
-								try {
-									int depth = Integer.parseInt(text.trim());
-									if (depth >= 1 && depth <= 26) {
-										if (parent instanceof Window) ((Window)parent).hide();
-										ModMenu.goToLevel(depth);
-									}
-								} catch (Exception ignored) {}
-							}
-						}
-					});
-				}
-			};
-			add(btnGoToLevel);
-		}
-
-		@Override
-		protected void layout() {
-			float bottom = y;
-
-			title.setPos((width - title.width()) / 2, bottom + GAP);
-			bottom = title.bottom() + 2 * GAP;
-
-			float rowGap = GAP;
-			float btnHeight = BTN_HEIGHT;
-
-			// Row 1: 3 columns
-			float col3 = (width - 2 * GAP) / 3f;
-			chkHP.setRect(0, bottom + rowGap, col3, btnHeight);
-			chkSTR.setRect(chkHP.right() + GAP, bottom + rowGap, col3, btnHeight);
-			btnSetSTR.setRect(chkSTR.right() + GAP, bottom + rowGap, width - chkSTR.right() - GAP, btnHeight);
-			bottom = chkHP.bottom();
-
-			// Row 2: 2 columns
-			float col2 = (width - GAP) / 2f;
-			chkInvulnerable.setRect(0, bottom + rowGap, col2, btnHeight);
-			chkStealth.setRect(chkInvulnerable.right() + GAP, bottom + rowGap, width - chkInvulnerable.right() - GAP, btnHeight);
-			bottom = chkInvulnerable.bottom();
-
-			// Row 3: 2 columns
-			chkAutoIdentify.setRect(0, bottom + rowGap, col2, btnHeight);
-			chkShop.setRect(chkAutoIdentify.right() + GAP, bottom + rowGap, width - chkAutoIdentify.right() - GAP, btnHeight);
-			bottom = chkAutoIdentify.bottom();
-
-			// Row 4: 2 columns
-			chkInfTalent.setRect(0, bottom + rowGap, col2, btnHeight);
-			chkNoLock.setRect(chkInfTalent.right() + GAP, bottom + rowGap, width - chkInfTalent.right() - GAP, btnHeight);
-			bottom = chkInfTalent.bottom();
-
-			// Row 5: 2 columns
-			chkInfWand.setRect(0, bottom + rowGap, col2, btnHeight);
-			chkInfItem.setRect(chkInfWand.right() + GAP, bottom + rowGap, width - chkInfWand.right() - GAP, btnHeight);
-			bottom = chkInfWand.bottom();
-
-			// Row 6: 3 columns
-			btnX2Gold.setRect(0, bottom + rowGap, col3, btnHeight);
-			btnX2Energy.setRect(btnX2Gold.right() + GAP, bottom + rowGap, col3, btnHeight);
-			btnX2Exp.setRect(btnX2Energy.right() + GAP, bottom + rowGap, width - btnX2Energy.right() - GAP, btnHeight);
-			bottom = btnX2Gold.bottom();
-
-			// Row 7: 2 columns
-			btnGetItem.setRect(0, bottom + rowGap, col2, btnHeight);
-			btnGoToLevel.setRect(btnGetItem.right() + GAP, bottom + rowGap, width - btnGetItem.right() - GAP, btnHeight);
-			bottom = btnGetItem.bottom();
-
-			height = bottom;
+			resize(width, (int) text.bottom());
 		}
 	}
 }

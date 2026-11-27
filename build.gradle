@@ -4,7 +4,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:9.5.1'
+        classpath 'com.android.tools.build:gradle:9.3.3'
     }
 }
 
@@ -15,18 +15,18 @@ allprojects {
         appPackageName = 'com.shatteredpixel.shatteredpixeldungeon'
 
         //Full releases gets +2 on version code, needed for an F-Droid quirk
-        appVersionCode = 922
-        appVersionName = '4.0.2'
+        appVersionCode = 932
+        appVersionName = '4.0.3'
 
         appJavaCompatibility = JavaVersion.VERSION_11
 
-        appAndroidCompileSDK = 36   //Android 15
+        appAndroidCompileSDK = 37   //Android 16
         appAndroidMinSDK = 21       //Android 5.0
-        appAndroidTargetSDK = 36    //Android 15
+        appAndroidTargetSDK = 37    //Android 16
 
-        gdxVersion = '1.14.0'
+        gdxVersion = '1.14.2'
         gdxControllersVersion = '2.2.4'
-        robovmVersion = '2.3.24'
+        robovmVersion = '2.3.26'
     }
     version = appVersionName
 
